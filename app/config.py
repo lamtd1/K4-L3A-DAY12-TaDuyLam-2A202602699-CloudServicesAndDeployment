@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     Không mặc định = fail fast ngay lúc khởi động.
     """
 
+    port: int = 8000
+    agent_api_key: str
+    redis_url: str = "redis://localhost:6379/0" 
+    rate_limit_per_minute: int = 10
+    monthly_budget_usd: float = 10.0
+    log_level: str = "INFO"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -49,3 +56,6 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Đọc cấu hình một lần rồi cache lại (đọc env mỗi request là lãng phí)."""
     return Settings()
+
+# for i, v in get_settings():
+#     print(f"{i, v}")
