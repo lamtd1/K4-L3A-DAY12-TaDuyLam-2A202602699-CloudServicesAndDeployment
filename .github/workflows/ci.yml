@@ -1,0 +1,58 @@
+name: CI/CD
+
+# 1. Kích hoạt: push vào main (để deploy) và mọi pull_request nhắm vào main
+#    (để bắt lỗi TRƯỚC khi merge).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # 2. Chạy checkpoint trên máy sạch của GitHub.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cài dependency
+        run: pip install -r requirements.txt
+
+      - name: Chạy pytest
+        # test_cp5.py gọi vào bản deploy đang sống -> luôn đỏ/chậm trong CI.
+        # test_bonus_cicd.py tự kiểm tra badge của chính workflow này -> tự tham chiếu vòng tròn.
+        run: pytest tests/ -v --ignore=tests/test_cp5.py --ignore=tests/test_bonus_cicd.py
+        env:
+          AGENT_API_KEY: ci-dummy
+          REDIS_URL: "fake://"
+
+  # 3. Build thử Docker image trên máy sạch -> bắt lỗi "chỉ chạy trên máy tôi".
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t day12-agent:ci .
+
+  # 4. Chỉ deploy khi test và build đều xanh, và chỉ từ nhánh main sau một push
+  #    (mở pull request không được kéo theo deploy).
+  deploy:
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deploy hook
+        # Deploy Hook là một URL bí mật (Render: Settings → Deploy Hook) — lưu
+        # trong repo Settings → Secrets and variables → Actions, KHÔNG dán vào đây.
+        run: curl -fsS -X POST "${{ secrets.RENDER_SECRET }}"
+
+      - name: Smoke test
+        # Đợi service khởi động lại rồi gọi /health. curl -f trả lỗi khi không phải 2xx.
+        run: |
+          sleep 45
+          curl -fsS "${{ vars.PUBLIC_URL }}/health"
